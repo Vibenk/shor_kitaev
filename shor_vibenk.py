@@ -1,7 +1,9 @@
 # pylint: skip-file
 
-"""Example implementation of Shor's algorithm."""
+#Shor-Kitaev próbaalkalmazás
 
+
+#A külső, nyilvánosan elérhető könyvtárak betöltése
 import math
 import random
 import sys
@@ -28,69 +30,64 @@ from projectq.meta import Control
 from projectq.ops import QFT, All, BasicMathGate, H, Measure, R, Swap, X, get_inverse
 
 
+# A kvantumalgoritmus
 def shor_kvantum(eng, N, a, verbose=False):
     """
-    Run the quantum subroutine of Shor's algorithm for factoring.
+    Az algoritmus kvantum része
 
-    Args:
-        eng (MainEngine): Main compiler engine to use.
-        N (int): Number to factor.
-        a (int): Relative prime to use as a base for a^x mod N.
-        verbose (bool): If True, display intermediate measurement results.
+    Param:
+        eng (MainEngine): A fő engine
+        N (int): A faktorizálandó egész szán
+        a (int): A próbálkozás bázisaként használt relatív prím
+        verbose (bool): A köztes mérési eredmények mutatása?
 
-    Returns:
-        r (float): Potential period of a.
+    Visszatér:
+        r (float): Az a bázison alapuló periodicitás
     """
     n = int(math.ceil(math.log(N, 2)))
     print("A szükséges kvantumregiszter mérete: ",n," kvantumbit")
 
     x = eng.allocate_qureg(n)
 
-    X | x[0]
+    X | x[0]       # Pauli-X kapu
 
-    measurements = [0] * (2 * n)  # will hold the 2n measurement results
+    measurements = [0] * (2 * n) # a mérési eredmények tárolására
 
     ctrl_qubit = eng.allocate_qubit()
 
-    for k in range(2 * n):
+    for k in range(2 * n):  # egy QPE iteráció
         current_a = pow(a, 1 << (2 * n - 1 - k), N)
-        # one iteration of 1-qubit QPE
-        H | ctrl_qubit
+        H | ctrl_qubit      # Hadamard kapu
         with Control(eng, ctrl_qubit):
             MultiplyByConstantModN(current_a, N) | x
 
-        # perform inverse QFT --> Rotations conditioned on previous outcomes
+        # QFT --> a mérési eredmények függvényében forgatás
         for i in range(k):
             if measurements[i]:
                 R(-math.pi / (1 << (k - i))) | ctrl_qubit
-        H | ctrl_qubit
+        H | ctrl_qubit      # Hadamard kapu
 
-        # and measure
         Measure | ctrl_qubit
         eng.flush()
         measurements[k] = int(ctrl_qubit)
         if measurements[k]:
-            X | ctrl_qubit
+            X | ctrl_qubit      # Pauli-X kapu
 
         if verbose:
             print(f"\033[95m{measurements[k]}\033[0m", end="")
             sys.stdout.flush()
 
-    All(Measure) | x
-    # turn the measured values into a number in [0,1)
+    All(Measure) | x    # mérési eredmények [0,1)
     y = sum((measurements[2 * n - 1 - i] * 1.0 / (1 << (i + 1))) for i in range(2 * n))
 
-    # continued fraction expansion to get denominator (the period?)
+    # LNKO
     r = Fraction(y).limit_denominator(N - 1).denominator
 
-    # return the (potential) period
+    # a lehetséges periódus kiírása
     return r
 
 
-# Filter function, which defines the gate set for the first optimization
-# (don't decompose QFTs and iQFTs to make cancellation easier)
 def high_level_gates(eng, cmd):
-    """Filter high-level gates."""
     g = cmd.gate
     if g == QFT or get_inverse(g) == QFT or g == Swap:
         return True
@@ -105,7 +102,6 @@ def high_level_gates(eng, cmd):
 
 
 if __name__ == "__main__":
-    # build compilation engine list
     resource_counter = ResourceCounter()
     rule_set = DecompositionRuleSet(modules=[projectq.libs.math, projectq.setups.decompositions])
     compilerengines = [
@@ -119,14 +115,12 @@ if __name__ == "__main__":
         resource_counter,
     ]
 
-    # make the compiler and run the circuit on the simulator backend
+    # a szimuláció létrehozása és paraméterezése
     eng = MainEngine(Simulator(), compilerengines)
 
-    # print welcome message and ask the user for the number to factor
+    # futási paraméterek bekérése
     N = int(input('\n\tA faktorializálandó szám (N): '))
-#    print(f"\n\tFactoring N = {N}: \033[0m", end="")
 
-    # choose a base at random:
     g = int(input("A választott kiinduló tipp (g) 0=RNG: "))
     if g==0:
         g = int(random.random() * N)
@@ -140,8 +134,7 @@ if __name__ == "__main__":
     if not gcd(g, N) == 1:
         print("\n\n\t\033[92mNagy szerencse, a kiinduló tipp már az egyik faktor :)")
     else:
-        # run the quantum subroutine
-
+        # kvantum rész futtatása
         kor = 0
         r = -1
         print("\n\n***** Kvantum algoritmus indítása *****")
@@ -155,10 +148,6 @@ if __name__ == "__main__":
         print("\n\n***** Futási eredmény kiértékelése *****")
         print("\nPeriodicitás (r) értéke=", r)
 
-
-        
-        # try to determine the factors
-#        if r % 2 == 0 and r>2:
         if kor < 6:
             tippalap = pow(g, r >> 1)
 
@@ -177,7 +166,5 @@ if __name__ == "__main__":
                 print(f"\n\n\t\033[92mPrímtényezők megtalálva : {f1} * {f2} = {N}\033[0m")
             else:
                 print(f"\n\n\t\033[91mKérjük próbálja másik kiinduló tippel!")
-
-            #print(resource_counter)  # print resource usage
         else:
             print(f"\n\n\t\033[91mAz algoritmus nem jutott eredményre a megadott próbák számán belül! Kérjük próbálja másik kiinduló tippel!")
